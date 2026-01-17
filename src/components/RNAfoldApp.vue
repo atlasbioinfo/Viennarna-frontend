@@ -3,6 +3,8 @@ import { ref, computed } from 'vue';
 import { fold, isValidSequence, cleanSequence, type FoldResult } from '../lib/rnafold';
 import RNAStructureViewer from './RNAStructureViewer.vue';
 import DotBracketViewer from './DotBracketViewer.vue';
+import ForceGraphViewer from './ForceGraphViewer.vue';
+import ArcDiagramViewer from './ArcDiagramViewer.vue';
 
 // Input sequence
 const inputSequence = ref('');
@@ -32,7 +34,16 @@ const exampleSequences = [
 ];
 
 // Current view mode
-const viewMode = ref<'dot-bracket' | 'circle'>('dot-bracket');
+type ViewMode = 'dot-bracket' | 'circle' | 'force' | 'arc';
+const viewMode = ref<ViewMode>('dot-bracket');
+
+// View mode options
+const viewModes: Array<{ id: ViewMode; label: string; icon: string }> = [
+  { id: 'dot-bracket', label: 'Dot-Bracket', icon: '( )' },
+  { id: 'arc', label: 'Arc Diagram', icon: '⌒' },
+  { id: 'force', label: 'Force Graph', icon: '◉' },
+  { id: 'circle', label: 'Circle Plot', icon: '○' },
+];
 
 // Cleaned sequence for display
 const cleanedSequence = computed(() => {
@@ -224,16 +235,14 @@ Base pairs: ${result.value.basePairs.map(([i, j]) => `(${i},${j})`).join(' ')}
         <!-- View mode toggle -->
         <div class="view-toggle">
           <button
-            :class="{ active: viewMode === 'dot-bracket' }"
-            @click="viewMode = 'dot-bracket'"
+            v-for="mode in viewModes"
+            :key="mode.id"
+            :class="{ active: viewMode === mode.id }"
+            @click="viewMode = mode.id"
+            :title="mode.label"
           >
-            Dot-Bracket
-          </button>
-          <button
-            :class="{ active: viewMode === 'circle' }"
-            @click="viewMode = 'circle'"
-          >
-            Circle Plot
+            <span class="mode-icon">{{ mode.icon }}</span>
+            <span class="mode-label">{{ mode.label }}</span>
           </button>
         </div>
 
@@ -243,6 +252,18 @@ Base pairs: ${result.value.basePairs.map(([i, j]) => `(${i},${j})`).join(' ')}
             v-if="viewMode === 'dot-bracket'"
             :sequence="result.sequence"
             :structure="result.structure"
+          />
+          <ArcDiagramViewer
+            v-else-if="viewMode === 'arc'"
+            :sequence="result.sequence"
+            :structure="result.structure"
+            :base-pairs="result.basePairs"
+          />
+          <ForceGraphViewer
+            v-else-if="viewMode === 'force'"
+            :sequence="result.sequence"
+            :structure="result.structure"
+            :base-pairs="result.basePairs"
           />
           <RNAStructureViewer
             v-else
@@ -546,31 +567,47 @@ textarea:disabled {
 /* View toggle */
 .view-toggle {
   display: flex;
-  gap: 5px;
+  gap: 8px;
   margin-bottom: 15px;
+  flex-wrap: wrap;
 }
 
 .view-toggle button {
   padding: 8px 16px;
   border: 1px solid #444;
+  border-radius: 8px;
   background: transparent;
   color: #888;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.view-toggle button:first-child {
-  border-radius: 8px 0 0 8px;
-}
-
-.view-toggle button:last-child {
-  border-radius: 0 8px 8px 0;
+.view-toggle button:hover:not(.active) {
+  border-color: #666;
+  color: #aaa;
 }
 
 .view-toggle button.active {
   background: #7B68EE;
   border-color: #7B68EE;
   color: white;
+}
+
+.view-toggle .mode-icon {
+  font-size: 1rem;
+}
+
+.view-toggle .mode-label {
+  font-size: 0.85rem;
+}
+
+@media (max-width: 600px) {
+  .view-toggle .mode-label {
+    display: none;
+  }
 }
 
 /* Structure view */
