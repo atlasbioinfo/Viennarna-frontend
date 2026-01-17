@@ -1,0 +1,208 @@
+/**
+ * Turner Energy Parameters for RNA Secondary Structure Prediction
+ * Based on ViennaRNA package (Mathews et al. 1999, Turner et al. 2010)
+ *
+ * All energies are in units of 0.01 kcal/mol (centidecimal)
+ */
+
+import { INF, MAXLOOP } from './constants';
+
+// Stack energies at 37°C (in 0.01 kcal/mol)
+// Index: [closing pair type][enclosed pair type]
+export const stack37: number[][] = [
+  [INF, INF, INF, INF, INF, INF, INF, INF],
+  [INF, -240, -330, -210, -140, -210, -210, -140], // CG
+  [INF, -330, -340, -250, -150, -220, -240, -150], // GC
+  [INF, -210, -250, 130, -50, -140, -130, 130],    // GU
+  [INF, -140, -150, -50, 30, -60, -100, 30],       // UG
+  [INF, -210, -220, -140, -60, -110, -90, -60],    // AU
+  [INF, -210, -240, -130, -100, -90, -130, -90],   // UA
+  [INF, -140, -150, 130, 30, -60, -90, 130],       // NN
+];
+
+// Hairpin loop energies (size 0-30)
+export const hairpin37: number[] = [
+  INF, INF, INF, 540, 560, 570, 540, 600, 550, 640, 650,
+  660, 670, 680, 690, 690, 700, 710, 710, 720, 720,
+  730, 730, 740, 740, 750, 750, 750, 760, 760, 770
+];
+
+// Bulge loop energies (size 0-30)
+export const bulge37: number[] = [
+  INF, 380, 280, 320, 360, 400, 440, 460, 470, 480, 490,
+  500, 510, 520, 530, 540, 540, 550, 550, 560, 570,
+  570, 580, 580, 580, 590, 590, 600, 600, 600, 610
+];
+
+// Internal loop energies (size 0-30)
+export const internalLoop37: number[] = [
+  INF, INF, 100, 100, 110, 200, 200, 210, 230, 240, 250,
+  260, 270, 280, 290, 290, 300, 310, 310, 320, 330,
+  330, 340, 340, 350, 350, 350, 360, 360, 370, 370
+];
+
+// Terminal AU penalty
+export const TerminalAU = 50;
+
+// Multi-loop parameters
+export const ML_intern = -90;   // Per internal branch
+export const ML_closing = 930;  // Closing penalty
+export const ML_BASE = 0;       // Per unpaired base (typically 0)
+
+// Ninio maximum correction
+export const MAX_NINIO = 300;
+export const ninio37 = 60;  // Per asymmetry
+
+// Log extrapolation coefficient for large loops
+export const lxc37 = 107.856;
+
+// Mismatch energies for hairpin loops
+// [pair type][5' mismatch][3' mismatch]
+export const mismatchH37: number[][][] = [
+  // NONE
+  [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+  // CG
+  [[-80, -100, -110, -100, -80], [-140, -150, -150, -140, -150], [-80, -100, -110, -100, -80], [-150, -230, -150, -240, -150], [-100, -100, -140, -100, -210]],
+  // GC
+  [[-50, -110, -70, -110, -50], [-110, -110, -150, -130, -150], [-50, -110, -70, -110, -50], [-150, -250, -150, -220, -150], [-100, -110, -100, -110, -160]],
+  // GU
+  [[20, 20, -20, -10, -20], [20, 20, -50, -30, -50], [-10, -10, -20, -10, -20], [-50, -100, -50, -110, -50], [-10, -10, -30, -10, -100]],
+  // UG
+  [[0, -20, -10, -20, 0], [-30, -50, -30, -60, -30], [0, -20, -10, -20, 0], [-30, -90, -30, -110, -30], [-10, -20, -10, -20, -90]],
+  // AU
+  [[-10, -10, -20, -10, -20], [-30, -30, -50, -30, -50], [-10, -10, -20, -10, -20], [-50, -120, -50, -110, -50], [-10, -10, -30, -10, -120]],
+  // UA
+  [[0, -20, -10, -20, 0], [-30, -50, -30, -50, -30], [0, -20, -10, -20, 0], [-30, -150, -30, -150, -30], [-10, -20, -10, -20, -90]],
+  // NN
+  [[20, 20, -10, -10, 0], [20, 20, -30, -30, -30], [0, -10, -10, -10, 0], [-30, -90, -30, -110, -30], [-10, -10, -10, -10, -90]],
+];
+
+// Mismatch energies for internal loops
+export const mismatchI37: number[][][] = [
+  // NONE
+  [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+  // CG
+  [[0, 0, 0, 0, 0], [0, 0, 0, -80, 0], [0, 0, 0, 0, 0], [0, -100, 0, -100, 0], [0, 0, 0, 0, -60]],
+  // GC
+  [[0, 0, 0, 0, 0], [0, 0, 0, -80, 0], [0, 0, 0, 0, 0], [0, -100, 0, -100, 0], [0, 0, 0, 0, -60]],
+  // GU
+  [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
+  // UG
+  [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
+  // AU
+  [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
+  // UA
+  [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
+  // NN
+  [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
+];
+
+// Mismatch energies for multi-loops
+export const mismatchM37: number[][][] = [
+  // NONE
+  [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+  // CG
+  [[-50, -110, -50, -140, -70], [-110, -110, -110, -160, -110], [-70, -150, -70, -150, -100], [-110, -130, -110, -140, -110], [-50, -150, -50, -150, -70]],
+  // GC
+  [[-80, -140, -80, -140, -100], [-100, -150, -100, -140, -100], [-110, -150, -110, -150, -140], [-100, -140, -100, -160, -100], [-80, -150, -80, -150, -120]],
+  // GU
+  [[-50, -80, -50, -50, -50], [-50, -100, -70, -50, -70], [-60, -80, -60, -80, -60], [-70, -110, -70, -80, -70], [-50, -80, -50, -80, -50]],
+  // UG
+  [[-30, -30, -60, -60, -60], [-30, -30, -60, -60, -60], [-70, -100, -70, -100, -80], [-60, -80, -60, -80, -60], [-60, -100, -70, -100, -60]],
+  // AU
+  [[-50, -80, -50, -80, -50], [-70, -100, -70, -110, -70], [-60, -80, -60, -80, -60], [-70, -110, -70, -120, -70], [-50, -80, -50, -80, -50]],
+  // UA
+  [[-60, -80, -60, -80, -60], [-60, -80, -60, -80, -60], [-70, -100, -70, -100, -80], [-60, -80, -60, -80, -60], [-70, -100, -70, -100, -80]],
+  // NN
+  [[-30, -30, -50, -50, -50], [-30, -30, -60, -50, -60], [-60, -80, -60, -80, -60], [-60, -80, -60, -80, -60], [-50, -80, -50, -80, -50]],
+];
+
+// Dangling end energies (5' and 3')
+// dangle5[pair][base] - 5' dangling base
+export const dangle5_37: number[][] = [
+  [INF, INF, INF, INF, INF],
+  [-50, -30, -20, -10, -20],  // CG
+  [-20, -30, -0, -0, -0],     // GC
+  [-30, -30, -40, -20, -20],  // GU
+  [-30, -10, -20, -20, -20],  // UG
+  [-30, -30, -40, -20, -20],  // AU
+  [-30, -10, -20, -20, -20],  // UA
+  [-20, -10, -0, -0, -0],     // NN
+];
+
+// dangle3[pair][base] - 3' dangling base
+export const dangle3_37: number[][] = [
+  [INF, INF, INF, INF, INF],
+  [-110, -40, -130, -60, -60],  // CG
+  [-170, -80, -170, -120, -120], // GC
+  [-70, -10, -70, -10, -10],    // GU
+  [-100, -50, -80, -60, -60],   // UG
+  [-70, -10, -70, -10, -10],    // AU
+  [-100, -50, -80, -60, -60],   // UA
+  [-70, -10, -70, -10, -10],    // NN
+];
+
+// Special hairpin loops (tetraloops)
+export interface SpecialLoop {
+  seq: string;
+  energy: number;
+}
+
+export const Tetraloops: SpecialLoop[] = [
+  { seq: "GGGGAC", energy: -300 },
+  { seq: "GGUGAC", energy: -300 },
+  { seq: "CGAAAG", energy: -300 },
+  { seq: "GGAGAC", energy: -300 },
+  { seq: "CGCAAG", energy: -300 },
+  { seq: "GGAAAC", energy: -300 },
+  { seq: "CGGAAG", energy: -250 },
+  { seq: "CUUCGG", energy: -250 },
+  { seq: "CGUGAG", energy: -250 },
+  { seq: "CGAAGG", energy: -200 },
+  { seq: "CUACGG", energy: -200 },
+  { seq: "GGCAAC", energy: -200 },
+  { seq: "CGCGAG", energy: -200 },
+  { seq: "UGAGAG", energy: -200 },
+  { seq: "CGAGAG", energy: -150 },
+  { seq: "AGAAAU", energy: -150 },
+  { seq: "CGUAAG", energy: -150 },
+  { seq: "CUAACG", energy: -150 },
+  { seq: "UGAAAG", energy: -150 },
+  { seq: "GGAAGC", energy: -150 },
+  { seq: "GGGAAC", energy: -150 },
+  { seq: "UGAAAA", energy: -150 },
+  { seq: "AGCAAU", energy: -150 },
+  { seq: "AGUAAU", energy: -150 },
+  { seq: "CGGGAG", energy: -150 },
+  { seq: "AGUGAU", energy: -150 },
+  { seq: "GGCGAC", energy: -150 },
+  { seq: "GGGAGC", energy: -150 },
+  { seq: "GUGAAC", energy: -150 },
+  { seq: "UGGAAA", energy: -150 },
+];
+
+// Triloops
+export const Triloops: SpecialLoop[] = [
+  { seq: "GCAAC", energy: -150 },
+  { seq: "GUAAC", energy: -150 },
+];
+
+// Hexaloops
+export const Hexaloops: SpecialLoop[] = [
+  { seq: "ACAGUACU", energy: -280 },
+  { seq: "ACAGUGAU", energy: -280 },
+  { seq: "ACAGUGCU", energy: -280 },
+  { seq: "ACAGUGUU", energy: -280 },
+];
+
+/**
+ * Get loop energy for size > MAXLOOP using logarithmic extrapolation
+ */
+export function loopEnergy(loopSize: number, baseEnergy: number[]): number {
+  if (loopSize <= MAXLOOP) {
+    return baseEnergy[loopSize] ?? INF;
+  }
+  // Logarithmic extrapolation
+  const maxEnergy = baseEnergy[MAXLOOP] ?? INF;
+  return Math.round(maxEnergy + lxc37 * Math.log(loopSize / MAXLOOP));
+}
