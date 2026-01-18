@@ -14,6 +14,7 @@ import {
   mismatchH37,
   mismatchI37,
   mismatchM37,
+  mismatchExt37,
   mismatch1nI37,
   mismatch23I37,
   dangle5_37,
@@ -136,7 +137,39 @@ function isClosingPairAllowed(pairType: PairTypeValue, fc: FoldCompound): boolea
 }
 
 /**
+ * Calculate exterior stem energy (ViennaRNA vrna_E_exterior_stem)
+ * @param pairType - base pair type
+ * @param n5d - 5' neighbor base (or -1 if none)
+ * @param n3d - 3' neighbor base (or -1 if none)
+ * @param dangles - dangling end mode
+ */
+function exteriorStemEnergy(pairType: PairTypeValue, n5d: number, n3d: number, dangles: number): number {
+  let energy = 0;
+
+  if (dangles === 2) {
+    // Use mismatchExt when both neighbors are available
+    if (n5d >= 0 && n3d >= 0) {
+      energy += safeGet3D(mismatchExt37, pairType, n5d, n3d, 0);
+    } else if (n5d >= 0) {
+      energy += safeGet2D(dangle5_37, pairType, n5d, 0);
+    } else if (n3d >= 0) {
+      energy += safeGet2D(dangle3_37, pairType, n3d, 0);
+    }
+  } else if (dangles === 0) {
+    // No dangling ends
+  }
+
+  // Terminal AU penalty (type > 2 means GU, UG, AU, or UA)
+  if (pairType > 2) {
+    energy += TerminalAU;
+  }
+
+  return energy;
+}
+
+/**
  * Calculate hairpin loop energy
+ * Following ViennaRNA's vrna_E_hairpin function
  */
 function hairpinEnergy(fc: FoldCompound, i: number, j: number): number {
   const size = j - i - 1;
@@ -145,46 +178,50 @@ function hairpinEnergy(fc: FoldCompound, i: number, j: number): number {
   if (size < MIN_HAIRPIN_SIZE) return INF;
   if (!isClosingPairAllowed(pairType, fc)) return INF;
 
+  // Base hairpin energy from table
   let energy = loopEnergy(size, hairpin37);
 
-  // Add terminal AU/GU penalty
-  energy += terminalPenalty(pairType);
+  if (size < 3) return energy;  // Should not happen with MIN_HAIRPIN_SIZE = 3
 
-  // Add mismatch energy for size >= 3
-  if (size >= 3) {
-    const si1 = safeGet(fc.encodedSeq, i + 1, 0);
-    const sj1 = safeGet(fc.encodedSeq, j - 1, 0);
-    energy += safeGet3D(mismatchH37, pairType, si1, sj1, 0);
-  }
+  // Get mismatch bases
+  const si1 = safeGet(fc.encodedSeq, i + 1, 0);
+  const sj1 = safeGet(fc.encodedSeq, j - 1, 0);
 
-  // Check for special loops (tetraloops, triloops, hexaloops)
+  // Check for special loops - these REPLACE the normal energy
   if (!fc.options.noTetra) {
     if (size === 4) {
+      // Tetraloop: check for special sequence
       const loopSeq = fc.sequence.substring(i - 1, j);
       for (const tl of Tetraloops) {
         if (loopSeq === tl.seq) {
-          energy += tl.energy;
-          break;
-        }
-      }
-    } else if (size === 3) {
-      const loopSeq = fc.sequence.substring(i - 1, j);
-      for (const tl of Triloops) {
-        if (loopSeq === tl.seq) {
-          energy += tl.energy;
-          break;
+          // Return the special tetraloop energy directly (it's the total energy)
+          return tl.energy;
         }
       }
     } else if (size === 6) {
+      // Hexaloop: check for special sequence
       const loopSeq = fc.sequence.substring(i - 1, j);
       for (const hl of Hexaloops) {
         if (loopSeq === hl.seq) {
-          energy += hl.energy;
-          break;
+          return hl.energy;
         }
       }
+    } else if (size === 3) {
+      // Triloop: check for special sequence
+      const loopSeq = fc.sequence.substring(i - 1, j);
+      for (const tl of Triloops) {
+        if (loopSeq === tl.seq) {
+          return tl.energy;
+        }
+      }
+      // For size 3 loops that are not special triloops, add Terminal AU penalty
+      // (ViennaRNA: return energy + (type > 2 ? P->TerminalAU : 0))
+      return energy + terminalPenalty(pairType);
     }
   }
+
+  // For non-special loops, add mismatch energy
+  energy += safeGet3D(mismatchH37, pairType, si1, sj1, 0);
 
   return energy;
 }
@@ -358,11 +395,30 @@ function fillMatrices(fc: FoldCompound): void {
         // Case 1: Hairpin loop
         let cij = hairpinEnergy(fc, i, j);
 
-        // Case 2: Interior loop (including stacking and bulge)
+        // Case 2a: Stacking (check separately since it has no loop size limit)
+        {
+          const p = i + 1;
+          const q = j - 1;
+          if (q > p + MIN_HAIRPIN_SIZE) {
+            const innerPairType = fc.pairType(p, q);
+            if (isPairAllowed(innerPairType, fc)) {
+              const cpq = safeGet2D(c, p, q, INF);
+              if (cpq < INF) {
+                const stackE = interiorEnergy(fc, i, j, p, q) + cpq;
+                cij = Math.min(cij, stackE);
+              }
+            }
+          }
+        }
+
+        // Case 2b: Interior loop (bulge and internal loops, limited by maxLoopSize)
         const maxLoopSize = 30;
         for (let p = i + 1; p <= Math.min(i + maxLoopSize + 1, j - MIN_HAIRPIN_SIZE - 2); p++) {
           const maxQ = Math.min(j - 1, p + maxLoopSize + 1 - (p - i - 1));
           for (let q = Math.max(p + MIN_HAIRPIN_SIZE + 1, j - maxLoopSize - 1 + (p - i - 1)); q <= maxQ; q++) {
+            // Skip stacking case (already handled above)
+            if (p === i + 1 && q === j - 1) continue;
+
             const innerPairType = fc.pairType(p, q);
             if (isPairAllowed(innerPairType, fc)) {
               const cpq = safeGet2D(c, p, q, INF);
@@ -427,14 +483,18 @@ function fillMatrices(fc: FoldCompound): void {
           if (ckj < INF) {
             let stemContrib = ckj + ML_intern37 + terminalPenalty(stemPairType);
 
-            // Add dangling ends for dangles mode
-            if (dangles === 2 && k > i) {
-              const sk1 = safeGet(fc.encodedSeq, k - 1, 0);
-              stemContrib += safeGet2D(dangle5_37, stemPairType, sk1, 0);
-            }
-            if (dangles === 2 && j < fc.length) {
-              const sj1 = safeGet(fc.encodedSeq, j + 1, 0);
-              stemContrib += safeGet2D(dangle3_37, stemPairType, sj1, 0);
+            // Add mismatch/dangle energies for dangles mode (following ViennaRNA E_MLstem)
+            if (dangles === 2) {
+              const n5d = k > 1 ? safeGet(fc.encodedSeq, k - 1, 0) : -1;
+              const n3d = j < fc.length ? safeGet(fc.encodedSeq, j + 1, 0) : -1;
+              if (n5d >= 0 && n3d >= 0) {
+                // Both neighbors available - use mismatchM
+                stemContrib += safeGet3D(mismatchM37, stemPairType, n5d, n3d, 0);
+              } else if (n5d >= 0) {
+                stemContrib += safeGet2D(dangle5_37, stemPairType, n5d, 0);
+              } else if (n3d >= 0) {
+                stemContrib += safeGet2D(dangle3_37, stemPairType, n3d, 0);
+              }
             }
 
             if (k === i) {
@@ -454,7 +514,7 @@ function fillMatrices(fc: FoldCompound): void {
     }
   }
 
-  // Fill f5 - external loop energy
+  // Fill f5 - external loop energy (following ViennaRNA vrna_mfe_exterior_f5)
   for (let j = 1; j <= n; j++) {
     f5[j] = f5[j - 1] ?? 0; // j unpaired
 
@@ -464,25 +524,12 @@ function fillMatrices(fc: FoldCompound): void {
       if (isClosingPairAllowed(pairType, fc)) {
         const ckj = safeGet2D(c, k, j, INF);
         if (ckj < INF) {
-          let contrib = ckj + terminalPenalty(pairType);
+          // Get neighbor bases for exterior stem energy
+          const n5d = k > 1 ? safeGet(fc.encodedSeq, k - 1, 0) : -1;
+          const n3d = j < n ? safeGet(fc.encodedSeq, j + 1, 0) : -1;
 
-          // Add dangling ends for external loop (dangles=2)
-          if (dangles === 2) {
-            if (k > 1) {
-              const sk1 = safeGet(fc.encodedSeq, k - 1, 0);
-              contrib += safeGet2D(dangle5_37, pairType, sk1, 0);
-            }
-            if (j < n) {
-              const sj1 = safeGet(fc.encodedSeq, j + 1, 0);
-              contrib += safeGet2D(dangle3_37, pairType, sj1, 0);
-            }
-          } else if (dangles === 1) {
-            // dangles=1: only count if unpaired
-            if (k > 1 && (f5[k - 1] === f5[k - 2])) {
-              const sk1 = safeGet(fc.encodedSeq, k - 1, 0);
-              contrib += safeGet2D(dangle5_37, pairType, sk1, 0);
-            }
-          }
+          // Use exterior stem energy function (mimics ViennaRNA)
+          const contrib = ckj + exteriorStemEnergy(pairType, n5d, n3d, dangles);
 
           if (k === 1) {
             f5[j] = Math.min(f5[j] ?? INF, contrib);
@@ -510,46 +557,36 @@ function backtrack(fc: FoldCompound): Array<[number, number]> {
   const stack: Array<[number, number, number]> = [];
 
   // Start from f5[n]
+  // ViennaRNA backtracking: always try pairs first, then mark as unpaired
   let j = n;
   while (j > 0) {
     const f5j = f5[j] ?? 0;
-    const f5j1 = f5[j - 1] ?? 0;
 
-    if (f5j === f5j1) {
-      // j is unpaired
-      j--;
-    } else {
-      // Find k such that (k,j) is paired
-      let found = false;
-      for (let k = 1; k <= j - MIN_HAIRPIN_SIZE - 1 && !found; k++) {
-        const pairType = fc.pairType(k, j);
-        if (isClosingPairAllowed(pairType, fc)) {
-          const ckj = safeGet2D(c, k, j, INF);
-          if (ckj < INF) {
-            let contrib = ckj + terminalPenalty(pairType);
+    // Try to find k such that (k,j) is paired (check pairs first, like ViennaRNA)
+    let found = false;
+    for (let k = 1; k <= j - MIN_HAIRPIN_SIZE - 1 && !found; k++) {
+      const pairType = fc.pairType(k, j);
+      if (isClosingPairAllowed(pairType, fc)) {
+        const ckj = safeGet2D(c, k, j, INF);
+        if (ckj < INF) {
+          // Use same exterior stem energy calculation as in fillMatrices
+          const n5d = k > 1 ? safeGet(fc.encodedSeq, k - 1, 0) : -1;
+          const n3d = j < n ? safeGet(fc.encodedSeq, j + 1, 0) : -1;
+          const contrib = ckj + exteriorStemEnergy(pairType, n5d, n3d, dangles);
 
-            if (dangles === 2) {
-              if (k > 1) {
-                const sk1 = safeGet(fc.encodedSeq, k - 1, 0);
-                contrib += safeGet2D(dangle5_37, pairType, sk1, 0);
-              }
-              if (j < n) {
-                const sj1 = safeGet(fc.encodedSeq, j + 1, 0);
-                contrib += safeGet2D(dangle3_37, pairType, sj1, 0);
-              }
-            }
-
-            const expected = (k === 1) ? contrib : (f5[k - 1] ?? 0) + contrib;
-            if (Math.abs(f5j - expected) < 1) {
-              basePairs.push([k, j]);
-              stack.push([k, j, 1]);
-              j = k - 1;
-              found = true;
-            }
+          const expected = (k === 1) ? contrib : (f5[k - 1] ?? 0) + contrib;
+          if (Math.abs(f5j - expected) < 1) {
+            basePairs.push([k, j]);
+            stack.push([k, j, 1]);
+            j = k - 1;
+            found = true;
           }
         }
       }
-      if (!found) j--;
+    }
+    if (!found) {
+      // j is unpaired
+      j--;
     }
   }
 
@@ -570,25 +607,47 @@ function backtrack(fc: FoldCompound): Array<[number, number]> {
         continue; // Hairpin, no more pairs inside
       }
 
-      // Check interior loops
+      // Check stacking first (no loop size limit)
       let found = false;
-      const maxLoopSize = 30;
-      for (let p = i + 1; p <= Math.min(i + maxLoopSize + 1, curJ - MIN_HAIRPIN_SIZE - 2) && !found; p++) {
-        const maxQ = Math.min(curJ - 1, p + maxLoopSize + 1 - (p - i - 1));
-        for (let q = Math.max(p + MIN_HAIRPIN_SIZE + 1, curJ - maxLoopSize - 1 + (p - i - 1)); q <= maxQ && !found; q++) {
-          if (isPairAllowed(fc.pairType(p, q), fc)) {
-            const cpq = safeGet2D(c, p, q, INF);
-            if (cpq < INF) {
-              if (noLP) {
-                const n1 = p - i - 1;
-                const n2 = curJ - q - 1;
-                if (!(n1 === 0 && n2 === 0)) continue;
-              }
-              const interior = interiorEnergy(fc, i, curJ, p, q) + cpq;
-              if (Math.abs(cij - interior) < 1) {
-                basePairs.push([p, q]);
-                stack.push([p, q, 1]);
-                found = true;
+      {
+        const p = i + 1;
+        const q = curJ - 1;
+        if (q > p + MIN_HAIRPIN_SIZE && isPairAllowed(fc.pairType(p, q), fc)) {
+          const cpq = safeGet2D(c, p, q, INF);
+          if (cpq < INF) {
+            const stackE = interiorEnergy(fc, i, curJ, p, q) + cpq;
+            if (Math.abs(cij - stackE) < 1) {
+              basePairs.push([p, q]);
+              stack.push([p, q, 1]);
+              found = true;
+            }
+          }
+        }
+      }
+
+      // Check interior loops (bulge and internal, limited by maxLoopSize)
+      if (!found) {
+        const maxLoopSize = 30;
+        for (let p = i + 1; p <= Math.min(i + maxLoopSize + 1, curJ - MIN_HAIRPIN_SIZE - 2) && !found; p++) {
+          const maxQ = Math.min(curJ - 1, p + maxLoopSize + 1 - (p - i - 1));
+          for (let q = Math.max(p + MIN_HAIRPIN_SIZE + 1, curJ - maxLoopSize - 1 + (p - i - 1)); q <= maxQ && !found; q++) {
+            // Skip stacking case (already handled above)
+            if (p === i + 1 && q === curJ - 1) continue;
+
+            if (isPairAllowed(fc.pairType(p, q), fc)) {
+              const cpq = safeGet2D(c, p, q, INF);
+              if (cpq < INF) {
+                if (noLP) {
+                  const n1 = p - i - 1;
+                  const n2 = curJ - q - 1;
+                  if (!(n1 === 0 && n2 === 0)) continue;
+                }
+                const interior = interiorEnergy(fc, i, curJ, p, q) + cpq;
+                if (Math.abs(cij - interior) < 1) {
+                  basePairs.push([p, q]);
+                  stack.push([p, q, 1]);
+                  found = true;
+                }
               }
             }
           }
@@ -638,13 +697,18 @@ function backtrack(fc: FoldCompound): Array<[number, number]> {
           if (ckj < INF) {
             let stemContrib = ckj + ML_intern37 + terminalPenalty(stemPairType);
 
-            if (dangles === 2 && k > i) {
-              const sk1 = safeGet(fc.encodedSeq, k - 1, 0);
-              stemContrib += safeGet2D(dangle5_37, stemPairType, sk1, 0);
-            }
-            if (dangles === 2 && curJ < fc.length) {
-              const sj1 = safeGet(fc.encodedSeq, curJ + 1, 0);
-              stemContrib += safeGet2D(dangle3_37, stemPairType, sj1, 0);
+            // Add mismatch/dangle energies for dangles mode (following ViennaRNA E_MLstem)
+            if (dangles === 2) {
+              const n5d = k > 1 ? safeGet(fc.encodedSeq, k - 1, 0) : -1;
+              const n3d = curJ < fc.length ? safeGet(fc.encodedSeq, curJ + 1, 0) : -1;
+              if (n5d >= 0 && n3d >= 0) {
+                // Both neighbors available - use mismatchM
+                stemContrib += safeGet3D(mismatchM37, stemPairType, n5d, n3d, 0);
+              } else if (n5d >= 0) {
+                stemContrib += safeGet2D(dangle5_37, stemPairType, n5d, 0);
+              } else if (n3d >= 0) {
+                stemContrib += safeGet2D(dangle3_37, stemPairType, n3d, 0);
+              }
             }
 
             let expected: number;
