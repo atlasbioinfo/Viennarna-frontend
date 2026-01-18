@@ -6,7 +6,7 @@
  * algorithm based on Zuker's dynamic programming approach.
  */
 
-export { fold, evalStructure, type FoldResult } from './fold';
+export { fold, foldDebug, type FoldResult, type FoldOptions } from './fold';
 export { cleanSequence, isValidSequence, encodeSequence } from './sequence';
 export { Base, PairType, INF, MIN_HAIRPIN_SIZE } from './constants';
 export * as energyParams from './energyParams';

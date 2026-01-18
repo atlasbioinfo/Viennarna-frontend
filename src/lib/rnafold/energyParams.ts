@@ -1,14 +1,15 @@
 /**
  * Turner Energy Parameters for RNA Secondary Structure Prediction
- * Based on ViennaRNA package (Mathews et al. 1999, Turner et al. 2010)
+ * Based on ViennaRNA package (Turner 2004 parameters)
  *
- * All energies are in units of 0.01 kcal/mol (centidecimal)
+ * All energies are in units of 0.01 kcal/mol (dekacal/mol)
  */
 
 import { INF, MAXLOOP } from './constants';
 
-// Stack energies at 37°C (in 0.01 kcal/mol)
+// Stack energies at 37C
 // Index: [closing pair type][enclosed pair type]
+// Pair types: 0=NONE, 1=CG, 2=GC, 3=GU, 4=UG, 5=AU, 6=UA, 7=NN
 export const stack37: number[][] = [
   [INF, INF, INF, INF, INF, INF, INF, INF],
   [INF, -240, -330, -210, -140, -210, -210, -140], // CG
@@ -45,9 +46,14 @@ export const internalLoop37: number[] = [
 export const TerminalAU = 50;
 
 // Multi-loop parameters
-export const ML_intern = -90;   // Per internal branch
-export const ML_closing = 930;  // Closing penalty
-export const ML_BASE = 0;       // Per unpaired base (typically 0)
+export const ML_intern37 = -90;   // Per internal branch
+export const ML_closing37 = 930;  // Closing penalty
+export const ML_BASE37 = 0;       // Per unpaired base
+
+// Legacy names
+export const ML_intern = ML_intern37;
+export const ML_closing = ML_closing37;
+export const ML_BASE = ML_BASE37;
 
 // Ninio maximum correction
 export const MAX_NINIO = 300;
@@ -58,29 +64,30 @@ export const lxc37 = 107.856;
 
 // Mismatch energies for hairpin loops
 // [pair type][5' mismatch][3' mismatch]
+// Base indices: 0=N, 1=A, 2=C, 3=G, 4=U
 export const mismatchH37: number[][][] = [
-  // NONE
+  // NONE (0)
   [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
-  // CG
+  // CG (1)
   [[-80, -100, -110, -100, -80], [-140, -150, -150, -140, -150], [-80, -100, -110, -100, -80], [-150, -230, -150, -240, -150], [-100, -100, -140, -100, -210]],
-  // GC
+  // GC (2)
   [[-50, -110, -70, -110, -50], [-110, -110, -150, -130, -150], [-50, -110, -70, -110, -50], [-150, -250, -150, -220, -150], [-100, -110, -100, -110, -160]],
-  // GU
+  // GU (3)
   [[20, 20, -20, -10, -20], [20, 20, -50, -30, -50], [-10, -10, -20, -10, -20], [-50, -100, -50, -110, -50], [-10, -10, -30, -10, -100]],
-  // UG
+  // UG (4)
   [[0, -20, -10, -20, 0], [-30, -50, -30, -60, -30], [0, -20, -10, -20, 0], [-30, -90, -30, -110, -30], [-10, -20, -10, -20, -90]],
-  // AU
+  // AU (5)
   [[-10, -10, -20, -10, -20], [-30, -30, -50, -30, -50], [-10, -10, -20, -10, -20], [-50, -120, -50, -110, -50], [-10, -10, -30, -10, -120]],
-  // UA
+  // UA (6)
   [[0, -20, -10, -20, 0], [-30, -50, -30, -50, -30], [0, -20, -10, -20, 0], [-30, -150, -30, -150, -30], [-10, -20, -10, -20, -90]],
-  // NN
+  // NN (7)
   [[20, 20, -10, -10, 0], [20, 20, -30, -30, -30], [0, -10, -10, -10, 0], [-30, -90, -30, -110, -30], [-10, -10, -10, -10, -90]],
 ];
 
-// Mismatch energies for internal loops
+// Mismatch energies for internal loops (generic)
 export const mismatchI37: number[][][] = [
   // NONE
-  [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+  [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
   // CG
   [[0, 0, 0, 0, 0], [0, 0, 0, -80, 0], [0, 0, 0, 0, 0], [0, -100, 0, -100, 0], [0, 0, 0, 0, -60]],
   // GC
@@ -97,7 +104,13 @@ export const mismatchI37: number[][][] = [
   [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
 ];
 
-// Mismatch energies for multi-loops
+// Mismatch energies for 1xn internal loops
+export const mismatch1nI37: number[][][] = mismatchI37;
+
+// Mismatch energies for 2x3 internal loops
+export const mismatch23I37: number[][][] = mismatchI37;
+
+// Mismatch energies for multi-loops (from ViennaRNA default.c)
 export const mismatchM37: number[][][] = [
   // NONE
   [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
@@ -117,82 +130,174 @@ export const mismatchM37: number[][][] = [
   [[-30, -30, -50, -50, -50], [-30, -30, -60, -50, -60], [-60, -80, -60, -80, -60], [-60, -80, -60, -80, -60], [-50, -80, -50, -80, -50]],
 ];
 
-// Dangling end energies (5' and 3')
+// Mismatch energies for external loops (same as multiloop)
+export const mismatchExt37: number[][][] = mismatchM37;
+
+// Dangling end energies (5' and 3') - from ViennaRNA default.c
 // dangle5[pair][base] - 5' dangling base
+// Base indices: 0=N, 1=A, 2=C, 3=G, 4=U
 export const dangle5_37: number[][] = [
-  [INF, INF, INF, INF, INF],
-  [-50, -30, -20, -10, -20],  // CG
-  [-20, -30, -0, -0, -0],     // GC
-  [-30, -30, -40, -20, -20],  // GU
-  [-30, -10, -20, -20, -20],  // UG
-  [-30, -30, -40, -20, -20],  // AU
-  [-30, -10, -20, -20, -20],  // UA
-  [-20, -10, -0, -0, -0],     // NN
+  [INF, INF, INF, INF, INF],     // NONE
+  [-10, -50, -30, -20, -10],    // CG
+  [0, -20, -30, 0, 0],          // GC
+  [-20, -30, -30, -40, -20],    // GU
+  [-10, -30, -10, -20, -20],    // UG
+  [-20, -30, -30, -40, -20],    // AU
+  [-10, -30, -10, -20, -20],    // UA
+  [0, -20, -10, 0, 0],          // NN
 ];
 
 // dangle3[pair][base] - 3' dangling base
 export const dangle3_37: number[][] = [
-  [INF, INF, INF, INF, INF],
-  [-110, -40, -130, -60, -60],  // CG
-  [-170, -80, -170, -120, -120], // GC
-  [-70, -10, -70, -10, -10],    // GU
-  [-100, -50, -80, -60, -60],   // UG
-  [-70, -10, -70, -10, -10],    // AU
-  [-100, -50, -80, -60, -60],   // UA
-  [-70, -10, -70, -10, -10],    // NN
+  [INF, INF, INF, INF, INF],     // NONE
+  [-40, -110, -40, -130, -60],  // CG
+  [-80, -170, -80, -170, -120], // GC
+  [-10, -70, -10, -70, -10],    // GU
+  [-50, -100, -50, -80, -60],   // UG
+  [-10, -70, -10, -70, -10],    // AU
+  [-50, -100, -50, -80, -60],   // UA
+  [-10, -70, -10, -70, -10],    // NN
 ];
 
-// Special hairpin loops (tetraloops)
+// 1x1 internal loop energies from ViennaRNA intl11.h
+// int11_37[outer_pair_type][inner_pair_type_reversed][5prime_mismatch][3prime_mismatch]
+export const int11_37: number[][][][] = [
+  // Pair type 0 (NONE)
+  [
+    [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+    [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+    [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+    [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+    [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+    [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+    [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+    [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+  ],
+  // Pair type 1 (CG)
+  [
+    [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+    [[90, 90, 50, 50, 50], [90, 90, 50, 50, 50], [50, 50, 50, 50, 50], [50, 50, 50, -140, 50], [50, 50, 50, 50, 40]],
+    [[90, 90, 50, 50, 60], [90, 90, -40, 50, 50], [60, 30, 50, 50, 60], [50, -10, 50, -220, 50], [50, 50, 0, 50, -10]],
+    [[120, 120, 120, 120, 120], [120, 60, 50, 120, 120], [120, 120, 120, 120, 120], [120, -20, 120, -140, 120], [120, 120, 100, 120, 110]],
+    [[220, 220, 170, 120, 120], [220, 220, 130, 120, 120], [170, 120, 170, 120, 120], [120, 120, 120, -140, 120], [120, 120, 120, 120, 110]],
+    [[120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, -140, 120], [120, 120, 120, 120, 80]],
+    [[120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, -140, 120], [120, 120, 120, 120, 120]],
+    [[220, 220, 170, 120, 120], [220, 220, 130, 120, 120], [170, 120, 170, 120, 120], [120, 120, 120, -140, 120], [120, 120, 120, 120, 120]],
+  ],
+  // Pair type 2 (GC)
+  [
+    [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+    [[90, 90, 60, 50, 50], [90, 90, 30, -10, 50], [50, -40, 50, 50, 0], [50, 50, 50, -220, 50], [60, 50, 60, 50, -10]],
+    [[80, 80, 50, 50, 50], [80, 80, 50, 50, 50], [50, 50, 50, 50, 50], [50, 50, 50, -230, 50], [50, 50, 50, 50, -60]],
+    [[190, 190, 120, 150, 150], [190, 190, 120, 150, 120], [120, 120, 120, 120, 120], [120, 120, 120, -140, 120], [150, 120, 120, 120, 150]],
+    [[160, 160, 120, 120, 120], [160, 160, 120, 100, 120], [120, 120, 120, 120, 120], [120, 120, 120, -140, 120], [120, 120, 120, 120, 70]],
+    [[120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, -140, 120], [120, 120, 120, 120, 80]],
+    [[120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, -140, 120], [120, 120, 120, 120, 120]],
+    [[190, 190, 120, 150, 150], [190, 190, 120, 150, 120], [120, 120, 120, 120, 120], [120, 120, 120, -140, 120], [150, 120, 120, 120, 150]],
+  ],
+  // Pair type 3 (GU)
+  [
+    [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+    [[120, 120, 120, 120, 120], [120, 60, 120, -20, 120], [120, 50, 120, 120, 100], [120, 120, 120, -140, 120], [120, 120, 120, 120, 110]],
+    [[190, 190, 120, 120, 150], [190, 190, 120, 120, 120], [120, 120, 120, 120, 120], [150, 150, 120, -140, 120], [150, 120, 120, 120, 150]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 120]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 160]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 120]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 160]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 160]],
+  ],
+  // Pair type 4 (UG)
+  [
+    [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+    [[220, 220, 170, 120, 120], [220, 220, 120, 120, 120], [170, 130, 170, 120, 120], [120, 120, 120, -140, 120], [120, 120, 120, 120, 110]],
+    [[160, 160, 120, 120, 120], [160, 160, 120, 120, 120], [120, 120, 120, 120, 120], [120, 100, 120, -140, 120], [120, 120, 120, 120, 70]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 160]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 190]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 160]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 190]],
+    [[220, 220, 190, 190, 190], [220, 220, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 190]],
+  ],
+  // Pair type 5 (AU)
+  [
+    [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+    [[120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, -140, 120], [120, 120, 120, 120, 80]],
+    [[120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, -140, 120], [120, 120, 120, 120, 80]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 120]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 160]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 120]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 150]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 160]],
+  ],
+  // Pair type 6 (UA)
+  [
+    [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+    [[120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, -140, 120], [120, 120, 120, 120, 120]],
+    [[120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, 120, 120], [120, 120, 120, -140, 120], [120, 120, 120, 120, 120]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 160]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 190]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 150]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 170]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 190]],
+  ],
+  // Pair type 7 (NN)
+  [
+    [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+    [[220, 220, 170, 120, 120], [220, 220, 120, 120, 120], [170, 130, 170, 120, 120], [120, 120, 120, -140, 120], [120, 120, 120, 120, 120]],
+    [[190, 190, 120, 120, 150], [190, 190, 120, 120, 120], [120, 120, 120, 120, 120], [150, 150, 120, -140, 120], [150, 120, 120, 120, 150]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 160]],
+    [[220, 220, 190, 190, 190], [220, 220, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 190]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 160]],
+    [[190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 190]],
+    [[220, 220, 190, 190, 190], [220, 220, 190, 190, 190], [190, 190, 190, 190, 190], [190, 190, 190, -70, 190], [190, 190, 190, 190, 190]],
+  ],
+];
+
+// 2x1 internal loop energies - not fully populated, use fallback
+export const int21_37: number[][][][][] = [];
+
+// 2x2 internal loop energies - not fully populated, use fallback
+export const int22_37: number[][][][][][] = [];
+
+// Special hairpin loops - these are TOTAL energies, not bonuses
+// From ViennaRNA default.c
+
+// Triloops (5 nucleotide loops including closing pair)
 export interface SpecialLoop {
   seq: string;
   energy: number;
 }
 
-export const Tetraloops: SpecialLoop[] = [
-  { seq: "GGGGAC", energy: -300 },
-  { seq: "GGUGAC", energy: -300 },
-  { seq: "CGAAAG", energy: -300 },
-  { seq: "GGAGAC", energy: -300 },
-  { seq: "CGCAAG", energy: -300 },
-  { seq: "GGAAAC", energy: -300 },
-  { seq: "CGGAAG", energy: -250 },
-  { seq: "CUUCGG", energy: -250 },
-  { seq: "CGUGAG", energy: -250 },
-  { seq: "CGAAGG", energy: -200 },
-  { seq: "CUACGG", energy: -200 },
-  { seq: "GGCAAC", energy: -200 },
-  { seq: "CGCGAG", energy: -200 },
-  { seq: "UGAGAG", energy: -200 },
-  { seq: "CGAGAG", energy: -150 },
-  { seq: "AGAAAU", energy: -150 },
-  { seq: "CGUAAG", energy: -150 },
-  { seq: "CUAACG", energy: -150 },
-  { seq: "UGAAAG", energy: -150 },
-  { seq: "GGAAGC", energy: -150 },
-  { seq: "GGGAAC", energy: -150 },
-  { seq: "UGAAAA", energy: -150 },
-  { seq: "AGCAAU", energy: -150 },
-  { seq: "AGUAAU", energy: -150 },
-  { seq: "CGGGAG", energy: -150 },
-  { seq: "AGUGAU", energy: -150 },
-  { seq: "GGCGAC", energy: -150 },
-  { seq: "GGGAGC", energy: -150 },
-  { seq: "GUGAAC", energy: -150 },
-  { seq: "UGGAAA", energy: -150 },
-];
-
-// Triloops
 export const Triloops: SpecialLoop[] = [
-  { seq: "GCAAC", energy: -150 },
-  { seq: "GUAAC", energy: -150 },
+  { seq: "CAACG", energy: 680 },
+  { seq: "GUUAC", energy: 690 },
 ];
 
-// Hexaloops
+// Tetraloops (6 nucleotide loops including closing pair)
+export const Tetraloops: SpecialLoop[] = [
+  { seq: "CAACGG", energy: 550 },
+  { seq: "CCAAGG", energy: 330 },
+  { seq: "CCACGG", energy: 370 },
+  { seq: "CCCAGG", energy: 340 },
+  { seq: "CCGAGG", energy: 350 },
+  { seq: "CCGCGG", energy: 360 },
+  { seq: "CCUAGG", energy: 370 },
+  { seq: "CCUCGG", energy: 250 },
+  { seq: "CUAAGG", energy: 360 },
+  { seq: "CUACGG", energy: 280 },
+  { seq: "CUCAGG", energy: 370 },
+  { seq: "CUCCGG", energy: 270 },
+  { seq: "CUGCGG", energy: 280 },
+  { seq: "CUUAGG", energy: 350 },
+  { seq: "CUUCGG", energy: 370 },
+  { seq: "CUUUGG", energy: 370 },
+];
+
+// Hexaloops (8 nucleotide loops including closing pair)
 export const Hexaloops: SpecialLoop[] = [
-  { seq: "ACAGUACU", energy: -280 },
-  { seq: "ACAGUGAU", energy: -280 },
-  { seq: "ACAGUGCU", energy: -280 },
-  { seq: "ACAGUGUU", energy: -280 },
+  { seq: "ACAGUACU", energy: 280 },
+  { seq: "ACAGUGAU", energy: 360 },
+  { seq: "ACAGUGCU", energy: 290 },
+  { seq: "ACAGUGUU", energy: 180 },
 ];
 
 /**

@@ -1,26 +1,49 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { fold, isValidSequence, cleanSequence, type FoldResult } from '../lib/rnafold';
-import { foldWasm, preloadWasm, isWasmLoaded, type WasmFoldResult } from '../lib/rnafold-wasm';
 import RNAStructureViewer from './RNAStructureViewer.vue';
 import DotBracketViewer from './DotBracketViewer.vue';
-import ForceGraphViewer from './ForceGraphViewer.vue';
 import ArcDiagramViewer from './ArcDiagramViewer.vue';
+
+// Current active tool
+type ToolType = 'RNAfold' | 'RNAcofold' | 'RNAalifold' | 'RNAplfold' | 'RNAup';
+const activeTool = ref<ToolType>('RNAfold');
+
+// ViennaRNA tools list
+const viennaTools = [
+  { id: 'RNAfold' as ToolType, name: 'RNAfold', description: 'Secondary structure prediction', available: true },
+  { id: 'RNAcofold' as ToolType, name: 'RNAcofold', description: 'RNA-RNA interaction', available: false },
+  { id: 'RNAalifold' as ToolType, name: 'RNAalifold', description: 'Consensus structure', available: false },
+  { id: 'RNAplfold' as ToolType, name: 'RNAplfold', description: 'Local folding', available: false },
+  { id: 'RNAup' as ToolType, name: 'RNAup', description: 'Accessibility prediction', available: false },
+];
 
 // Input sequence
 const inputSequence = ref('');
 const isProcessing = ref(false);
 const error = ref<string | null>(null);
 const result = ref<FoldResult | null>(null);
-const wasmResult = ref<WasmFoldResult | null>(null);
 const computationTime = ref<number>(0);
-const wasmComputationTime = ref<number>(0);
 
-// Implementation mode
-type ImplementationMode = 'typescript' | 'wasm' | 'compare';
-const implementationMode = ref<ImplementationMode>('typescript');
-const wasmLoaded = ref(false);
-const wasmLoadError = ref<string | null>(null);
+// RNAfold parameters
+const foldParams = ref({
+  temperature: 37,
+  dangles: 2,
+  noLP: false,
+  noGU: false,
+  noClosingGU: false,
+  noTetra: false,
+});
+
+// Parameter descriptions
+const paramDescriptions = {
+  temperature: 'Folding temperature in Celsius',
+  dangles: 'Dangling end treatment (0=none, 1=unpaired only, 2=all)',
+  noLP: 'Disallow lonely base pairs',
+  noGU: 'Disallow G-U wobble pairs',
+  noClosingGU: 'Disallow G-U pairs at helix ends',
+  noTetra: 'Disable special tetraloop bonuses',
+};
 
 // Example sequences
 const exampleSequences = [
@@ -29,7 +52,7 @@ const exampleSequences = [
     sequence: 'GCGGAUUUAGCUCAGUUGGGAGAGCGCCAGACUGAAGAUCUGGAGGUCCUGUGUUCGAUCCACAGAAUUCGCACCA'
   },
   {
-    name: 'Hairpin (30nt)',
+    name: 'Hairpin (28nt)',
     sequence: 'GGGGAAAACCCCGGGGUUUUAAAACCCC'
   },
   {
@@ -37,21 +60,20 @@ const exampleSequences = [
     sequence: 'UGAGGUAGUAGGUUGUAUAGUUUUAGGGUCACACCCACCACUGGGAGAUAACUAUACAAUCUACUGUCUUUCC'
   },
   {
-    name: 'Simple stem-loop (20nt)',
+    name: 'Stem-loop (20nt)',
     sequence: 'GCGCAAAAGCGCUUUUGCGC'
   }
 ];
 
 // Current view mode
-type ViewMode = 'dot-bracket' | 'circle' | 'force' | 'arc';
+type ViewMode = 'dot-bracket' | 'circle' | 'arc';
 const viewMode = ref<ViewMode>('dot-bracket');
 
-// View mode options
+// View mode options (Force Graph removed)
 const viewModes: Array<{ id: ViewMode; label: string; icon: string }> = [
   { id: 'dot-bracket', label: 'Dot-Bracket', icon: '( )' },
-  { id: 'arc', label: 'Arc Diagram', icon: '⌒' },
-  { id: 'force', label: 'Force Graph', icon: '◉' },
-  { id: 'circle', label: 'Circle Plot', icon: '○' },
+  { id: 'arc', label: 'Arc Diagram', icon: '~' },
+  { id: 'circle', label: 'Circle Plot', icon: 'O' },
 ];
 
 // Cleaned sequence for display
@@ -80,40 +102,10 @@ const sequenceValidation = computed(() => {
   return { valid: true, message: `Valid sequence: ${cleaned.length} nucleotides` };
 });
 
-// Check if results match
-const resultsMatch = computed(() => {
-  if (!result.value || !wasmResult.value) return null;
-  return result.value.structure === wasmResult.value.structure;
-});
-
-// Speedup factor
-const speedupFactor = computed(() => {
-  if (!computationTime.value || !wasmComputationTime.value) return null;
-  return (computationTime.value / wasmComputationTime.value).toFixed(2);
-});
-
-// Preload WASM module
-onMounted(async () => {
-  try {
-    preloadWasm();
-    // Check loading state periodically
-    const checkLoaded = setInterval(() => {
-      if (isWasmLoaded()) {
-        wasmLoaded.value = true;
-        clearInterval(checkLoaded);
-      }
-    }, 100);
-    // Timeout after 10s
-    setTimeout(() => {
-      clearInterval(checkLoaded);
-      if (!wasmLoaded.value) {
-        wasmLoadError.value = 'WASM module failed to load';
-      }
-    }, 10000);
-  } catch (e) {
-    wasmLoadError.value = e instanceof Error ? e.message : 'Failed to load WASM module';
-  }
-});
+// Reset result when parameters change
+watch(foldParams, () => {
+  // Could trigger re-fold if desired
+}, { deep: true });
 
 // Fold the RNA sequence
 async function foldSequence() {
@@ -123,28 +115,25 @@ async function foldSequence() {
 
   error.value = null;
   result.value = null;
-  wasmResult.value = null;
   isProcessing.value = true;
 
   try {
     // Use setTimeout to allow UI to update
     await new Promise(resolve => setTimeout(resolve, 10));
 
-    if (implementationMode.value === 'typescript' || implementationMode.value === 'compare') {
-      const startTime = performance.now();
-      result.value = fold(inputSequence.value);
-      computationTime.value = Math.round(performance.now() - startTime);
-    }
-
-    if (implementationMode.value === 'wasm' || implementationMode.value === 'compare') {
-      const wasmRes = await foldWasm(inputSequence.value);
-      wasmResult.value = wasmRes;
-      wasmComputationTime.value = Math.round(wasmRes.computeTime);
-    }
+    const startTime = performance.now();
+    result.value = fold(inputSequence.value, {
+      temperature: foldParams.value.temperature,
+      dangles: foldParams.value.dangles,
+      noLP: foldParams.value.noLP,
+      noGU: foldParams.value.noGU,
+      noClosingGU: foldParams.value.noClosingGU,
+      noTetra: foldParams.value.noTetra,
+    });
+    computationTime.value = Math.round(performance.now() - startTime);
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'An error occurred during folding';
     result.value = null;
-    wasmResult.value = null;
   } finally {
     isProcessing.value = false;
   }
@@ -154,7 +143,6 @@ async function foldSequence() {
 function loadExample(seq: string) {
   inputSequence.value = seq;
   result.value = null;
-  wasmResult.value = null;
   error.value = null;
 }
 
@@ -162,32 +150,35 @@ function loadExample(seq: string) {
 function clearAll() {
   inputSequence.value = '';
   result.value = null;
-  wasmResult.value = null;
   error.value = null;
 }
 
 // Copy result to clipboard
 async function copyResult() {
-  const res = result.value || wasmResult.value;
-  if (!res) return;
+  if (!result.value) return;
 
-  const text = `>RNA_sequence
-${res.sequence}
-${res.structure} (${res.mfe.toFixed(2)} kcal/mol)`;
+  const text = `>${inputSequence.value.trim().substring(0, 20)}...
+${result.value.sequence}
+${result.value.structure} (${result.value.mfe.toFixed(2)} kcal/mol)`;
 
   await navigator.clipboard.writeText(text);
 }
 
 // Download result
 function downloadResult() {
-  const res = result.value || wasmResult.value;
-  if (!res) return;
+  if (!result.value) return;
 
   const text = `>RNA_sequence
-${res.sequence}
-${res.structure} (${res.mfe.toFixed(2)} kcal/mol)
+${result.value.sequence}
+${result.value.structure} (${result.value.mfe.toFixed(2)} kcal/mol)
 
-Base pairs: ${res.basePairs.map(([i, j]) => `(${i},${j})`).join(' ')}
+Base pairs: ${result.value.basePairs.map(([i, j]) => `(${i},${j})`).join(' ')}
+
+Parameters:
+Temperature: ${foldParams.value.temperature}C
+Dangles: ${foldParams.value.dangles}
+noLP: ${foldParams.value.noLP}
+noGU: ${foldParams.value.noGU}
 `;
 
   const blob = new Blob([text], { type: 'text/plain' });
@@ -199,94 +190,168 @@ Base pairs: ${res.basePairs.map(([i, j]) => `(${i},${j})`).join(' ')}
   URL.revokeObjectURL(url);
 }
 
-// Current result to display
-const displayResult = computed(() => {
-  if (implementationMode.value === 'wasm') return wasmResult.value;
-  return result.value;
+// Format command line
+const commandLine = computed(() => {
+  let cmd = 'RNAfold';
+  if (foldParams.value.temperature !== 37) cmd += ` -T ${foldParams.value.temperature}`;
+  if (foldParams.value.dangles !== 2) cmd += ` -d${foldParams.value.dangles}`;
+  if (foldParams.value.noLP) cmd += ' --noLP';
+  if (foldParams.value.noGU) cmd += ' --noGU';
+  if (foldParams.value.noClosingGU) cmd += ' --noClosingGU';
+  if (foldParams.value.noTetra) cmd += ' -4';
+  cmd += ' --noPS';
+  return cmd;
 });
 </script>
 
 <template>
-  <div class="rnafold-app">
-    <!-- Header -->
-    <header class="app-header">
-      <h1>RNAfold</h1>
-      <p class="subtitle">RNA Secondary Structure Prediction</p>
-      <p class="description">
-        TypeScript and WebAssembly implementations based on ViennaRNA package.
-        Predicts minimum free energy (MFE) secondary structures using Zuker's algorithm.
-      </p>
-    </header>
+  <div class="app-layout">
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2>ViennaRNA</h2>
+        <p class="version">Web Tools</p>
+      </div>
 
-    <!-- Main content -->
-    <main class="app-main">
-      <!-- Input section -->
-      <section class="input-section">
-        <h2>Input Sequence</h2>
-
-        <div class="textarea-wrapper">
-          <textarea
-            v-model="inputSequence"
-            placeholder="Enter RNA sequence (e.g., GCGCAAAAGCGC)&#10;Accepts A, U, G, C nucleotides&#10;T will be converted to U"
-            rows="4"
-            :disabled="isProcessing"
-          ></textarea>
-          <span class="char-count">{{ cleanedSequence.length }} nt</span>
-        </div>
-
-        <div
-          class="validation-message"
-          :class="{
-            'valid': sequenceValidation.valid && sequenceValidation.message,
-            'invalid': !sequenceValidation.valid && sequenceValidation.message,
-            'warning': sequenceValidation.message?.startsWith('Warning')
-          }"
+      <nav class="tool-nav">
+        <button
+          v-for="tool in viennaTools"
+          :key="tool.id"
+          class="tool-btn"
+          :class="{ active: activeTool === tool.id, disabled: !tool.available }"
+          @click="tool.available && (activeTool = tool.id)"
+          :disabled="!tool.available"
         >
-          {{ sequenceValidation.message }}
-        </div>
+          <span class="tool-name">{{ tool.name }}</span>
+          <span class="tool-desc">{{ tool.description }}</span>
+          <span v-if="!tool.available" class="coming-soon">Soon</span>
+        </button>
+      </nav>
 
-        <!-- Example sequences -->
-        <div class="examples">
-          <span class="examples-label">Examples:</span>
-          <button
-            v-for="example in exampleSequences"
-            :key="example.name"
-            class="example-btn"
-            @click="loadExample(example.sequence)"
+      <div class="sidebar-footer">
+        <a href="https://github.com/ViennaRNA/ViennaRNA" target="_blank">
+          ViennaRNA Package
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Header -->
+      <header class="app-header">
+        <h1>{{ activeTool }}</h1>
+        <p class="subtitle">
+          {{ activeTool === 'RNAfold' ? 'RNA Secondary Structure Prediction' : 'Coming Soon' }}
+        </p>
+      </header>
+
+      <!-- RNAfold Content -->
+      <div v-if="activeTool === 'RNAfold'" class="rnafold-content">
+        <!-- Input section -->
+        <section class="input-section">
+          <h2>Input Sequence</h2>
+
+          <div class="textarea-wrapper">
+            <textarea
+              v-model="inputSequence"
+              placeholder="Enter RNA sequence (e.g., GCGCAAAAGCGC)&#10;Accepts A, U, G, C nucleotides&#10;T will be converted to U"
+              rows="4"
+              :disabled="isProcessing"
+            ></textarea>
+            <span class="char-count">{{ cleanedSequence.length }} nt</span>
+          </div>
+
+          <div
+            class="validation-message"
+            :class="{
+              'valid': sequenceValidation.valid && sequenceValidation.message,
+              'invalid': !sequenceValidation.valid && sequenceValidation.message,
+              'warning': sequenceValidation.message?.startsWith('Warning')
+            }"
           >
-            {{ example.name }}
-          </button>
-        </div>
+            {{ sequenceValidation.message }}
+          </div>
 
-        <!-- Implementation mode toggle -->
-        <div class="impl-mode-section">
-          <span class="impl-label">Implementation:</span>
-          <div class="impl-toggle">
+          <!-- Example sequences -->
+          <div class="examples">
+            <span class="examples-label">Examples:</span>
             <button
-              :class="{ active: implementationMode === 'typescript' }"
-              @click="implementationMode = 'typescript'"
+              v-for="example in exampleSequences"
+              :key="example.name"
+              class="example-btn"
+              @click="loadExample(example.sequence)"
             >
-              TypeScript
-            </button>
-            <button
-              :class="{ active: implementationMode === 'wasm', disabled: !wasmLoaded }"
-              @click="wasmLoaded && (implementationMode = 'wasm')"
-              :disabled="!wasmLoaded"
-              :title="wasmLoaded ? 'Use WebAssembly implementation' : 'Loading WASM module...'"
-            >
-              WebAssembly
-              <span v-if="!wasmLoaded" class="wasm-loading">(loading...)</span>
-            </button>
-            <button
-              :class="{ active: implementationMode === 'compare', disabled: !wasmLoaded }"
-              @click="wasmLoaded && (implementationMode = 'compare')"
-              :disabled="!wasmLoaded"
-              :title="wasmLoaded ? 'Compare both implementations' : 'Loading WASM module...'"
-            >
-              Compare
+              {{ example.name }}
             </button>
           </div>
-        </div>
+        </section>
+
+        <!-- Parameters section -->
+        <section class="params-section">
+          <h2>Parameters</h2>
+
+          <div class="params-grid">
+            <div class="param-item">
+              <label for="temperature">
+                Temperature (C)
+                <span class="param-hint">{{ paramDescriptions.temperature }}</span>
+              </label>
+              <input
+                id="temperature"
+                type="number"
+                v-model.number="foldParams.temperature"
+                min="0"
+                max="100"
+                step="1"
+              />
+            </div>
+
+            <div class="param-item">
+              <label for="dangles">
+                Dangles
+                <span class="param-hint">{{ paramDescriptions.dangles }}</span>
+              </label>
+              <select id="dangles" v-model.number="foldParams.dangles">
+                <option :value="0">0 - None</option>
+                <option :value="1">1 - Unpaired only</option>
+                <option :value="2">2 - All (default)</option>
+              </select>
+            </div>
+
+            <div class="param-item checkbox">
+              <label>
+                <input type="checkbox" v-model="foldParams.noLP" />
+                No lonely pairs (--noLP)
+              </label>
+            </div>
+
+            <div class="param-item checkbox">
+              <label>
+                <input type="checkbox" v-model="foldParams.noGU" />
+                No G-U pairs (--noGU)
+              </label>
+            </div>
+
+            <div class="param-item checkbox">
+              <label>
+                <input type="checkbox" v-model="foldParams.noClosingGU" />
+                No closing G-U (--noClosingGU)
+              </label>
+            </div>
+
+            <div class="param-item checkbox">
+              <label>
+                <input type="checkbox" v-model="foldParams.noTetra" />
+                No tetraloop bonus (-4)
+              </label>
+            </div>
+          </div>
+
+          <div class="command-preview">
+            <span class="cmd-label">Equivalent command:</span>
+            <code>{{ commandLine }}</code>
+          </div>
+        </section>
 
         <!-- Action buttons -->
         <div class="actions">
@@ -302,288 +367,262 @@ const displayResult = computed(() => {
             Clear
           </button>
         </div>
-      </section>
 
-      <!-- Error display -->
-      <div v-if="error" class="error-message">
-        <strong>Error:</strong> {{ error }}
+        <!-- Error display -->
+        <div v-if="error" class="error-message">
+          <strong>Error:</strong> {{ error }}
+        </div>
+
+        <!-- Results section -->
+        <section v-if="result" class="results-section">
+          <h2>Results</h2>
+
+          <!-- MFE display -->
+          <div class="mfe-display">
+            <div class="mfe-value">
+              <span class="label">Minimum Free Energy:</span>
+              <span class="value">{{ result.mfe.toFixed(2) }} kcal/mol</span>
+            </div>
+            <div class="stats">
+              <span>Length: {{ result.sequence.length }} nt</span>
+              <span>Base pairs: {{ result.basePairs.length }}</span>
+              <span>Time: {{ computationTime }} ms</span>
+            </div>
+          </div>
+
+          <!-- View mode toggle -->
+          <div class="view-toggle">
+            <button
+              v-for="mode in viewModes"
+              :key="mode.id"
+              :class="{ active: viewMode === mode.id }"
+              @click="viewMode = mode.id"
+              :title="mode.label"
+            >
+              <span class="mode-icon">{{ mode.icon }}</span>
+              <span class="mode-label">{{ mode.label }}</span>
+            </button>
+          </div>
+
+          <!-- Structure visualization -->
+          <div class="structure-view">
+            <DotBracketViewer
+              v-if="viewMode === 'dot-bracket'"
+              :sequence="result.sequence"
+              :structure="result.structure"
+            />
+            <ArcDiagramViewer
+              v-else-if="viewMode === 'arc'"
+              :sequence="result.sequence"
+              :structure="result.structure"
+              :base-pairs="result.basePairs"
+            />
+            <RNAStructureViewer
+              v-else
+              :sequence="result.sequence"
+              :structure="result.structure"
+              :base-pairs="result.basePairs"
+            />
+          </div>
+
+          <!-- Export actions -->
+          <div class="export-actions">
+            <button class="btn secondary" @click="copyResult">
+              Copy to Clipboard
+            </button>
+            <button class="btn secondary" @click="downloadResult">
+              Download Result
+            </button>
+          </div>
+
+          <!-- Base pairs list -->
+          <details class="base-pairs-details">
+            <summary>Base Pairs ({{ result.basePairs.length }})</summary>
+            <div class="base-pairs-list">
+              <span
+                v-for="([i, j], index) in result.basePairs"
+                :key="index"
+                class="bp-item"
+              >
+                {{ result.sequence[i-1] }}{{ i }}-{{ result.sequence[j-1] }}{{ j }}
+              </span>
+            </div>
+          </details>
+        </section>
       </div>
 
-      <!-- Comparison Results -->
-      <section v-if="implementationMode === 'compare' && result && wasmResult" class="comparison-section">
-        <h2>Comparison Results</h2>
-
-        <div class="comparison-grid">
-          <!-- TypeScript Result -->
-          <div class="comparison-card ts-card">
-            <h3>TypeScript</h3>
-            <div class="result-stats">
-              <div class="stat">
-                <span class="stat-label">MFE:</span>
-                <span class="stat-value">{{ result.mfe.toFixed(2) }} kcal/mol</span>
-              </div>
-              <div class="stat">
-                <span class="stat-label">Time:</span>
-                <span class="stat-value time">{{ computationTime }} ms</span>
-              </div>
-              <div class="stat">
-                <span class="stat-label">Base pairs:</span>
-                <span class="stat-value">{{ result.basePairs.length }}</span>
-              </div>
-            </div>
-            <div class="structure-preview">
-              <code>{{ result.structure.substring(0, 50) }}{{ result.structure.length > 50 ? '...' : '' }}</code>
-            </div>
-          </div>
-
-          <!-- WASM Result -->
-          <div class="comparison-card wasm-card">
-            <h3>WebAssembly</h3>
-            <div class="result-stats">
-              <div class="stat">
-                <span class="stat-label">MFE:</span>
-                <span class="stat-value">{{ wasmResult.mfe.toFixed(2) }} kcal/mol</span>
-              </div>
-              <div class="stat">
-                <span class="stat-label">Time:</span>
-                <span class="stat-value time">{{ wasmComputationTime }} ms</span>
-              </div>
-              <div class="stat">
-                <span class="stat-label">Base pairs:</span>
-                <span class="stat-value">{{ wasmResult.basePairs.length }}</span>
-              </div>
-            </div>
-            <div class="structure-preview">
-              <code>{{ wasmResult.structure.substring(0, 50) }}{{ wasmResult.structure.length > 50 ? '...' : '' }}</code>
-            </div>
-          </div>
-        </div>
-
-        <!-- Comparison Summary -->
-        <div class="comparison-summary">
-          <div class="summary-item" :class="{ match: resultsMatch, mismatch: resultsMatch === false }">
-            <span class="summary-label">Structures:</span>
-            <span class="summary-value">{{ resultsMatch ? 'Match' : 'Different' }}</span>
-          </div>
-          <div class="summary-item" v-if="speedupFactor">
-            <span class="summary-label">WASM Speedup:</span>
-            <span class="summary-value speedup">{{ speedupFactor }}x {{ Number(speedupFactor) > 1 ? 'faster' : 'slower' }}</span>
-          </div>
-          <div class="summary-item" v-if="result.mfe !== wasmResult.mfe">
-            <span class="summary-label">MFE Difference:</span>
-            <span class="summary-value">{{ Math.abs(result.mfe - wasmResult.mfe).toFixed(4) }} kcal/mol</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- Results section -->
-      <section v-if="displayResult && implementationMode !== 'compare'" class="results-section">
-        <h2>Results <span class="impl-badge">{{ implementationMode === 'wasm' ? 'WebAssembly' : 'TypeScript' }}</span></h2>
-
-        <!-- MFE display -->
-        <div class="mfe-display">
-          <div class="mfe-value">
-            <span class="label">Minimum Free Energy:</span>
-            <span class="value">{{ displayResult.mfe.toFixed(2) }} kcal/mol</span>
-          </div>
-          <div class="stats">
-            <span>Length: {{ displayResult.sequence.length }} nt</span>
-            <span>Base pairs: {{ displayResult.basePairs.length }}</span>
-            <span>Computation time: {{ implementationMode === 'wasm' ? wasmComputationTime : computationTime }} ms</span>
-          </div>
-        </div>
-
-        <!-- View mode toggle -->
-        <div class="view-toggle">
-          <button
-            v-for="mode in viewModes"
-            :key="mode.id"
-            :class="{ active: viewMode === mode.id }"
-            @click="viewMode = mode.id"
-            :title="mode.label"
-          >
-            <span class="mode-icon">{{ mode.icon }}</span>
-            <span class="mode-label">{{ mode.label }}</span>
-          </button>
-        </div>
-
-        <!-- Structure visualization -->
-        <div class="structure-view">
-          <DotBracketViewer
-            v-if="viewMode === 'dot-bracket'"
-            :sequence="displayResult.sequence"
-            :structure="displayResult.structure"
-          />
-          <ArcDiagramViewer
-            v-else-if="viewMode === 'arc'"
-            :sequence="displayResult.sequence"
-            :structure="displayResult.structure"
-            :base-pairs="displayResult.basePairs"
-          />
-          <ForceGraphViewer
-            v-else-if="viewMode === 'force'"
-            :sequence="displayResult.sequence"
-            :structure="displayResult.structure"
-            :base-pairs="displayResult.basePairs"
-          />
-          <RNAStructureViewer
-            v-else
-            :sequence="displayResult.sequence"
-            :structure="displayResult.structure"
-            :base-pairs="displayResult.basePairs"
-          />
-        </div>
-
-        <!-- Export actions -->
-        <div class="export-actions">
-          <button class="btn secondary" @click="copyResult">
-            Copy to Clipboard
-          </button>
-          <button class="btn secondary" @click="downloadResult">
-            Download Result
-          </button>
-        </div>
-
-        <!-- Base pairs list -->
-        <details class="base-pairs-details">
-          <summary>Base Pairs ({{ displayResult.basePairs.length }})</summary>
-          <div class="base-pairs-list">
-            <span
-              v-for="([i, j], index) in displayResult.basePairs"
-              :key="index"
-              class="bp-item"
-            >
-              {{ displayResult.sequence[i-1] }}{{ i }}-{{ displayResult.sequence[j-1] }}{{ j }}
-            </span>
-          </div>
-        </details>
-      </section>
-
-      <!-- Visualization for compare mode -->
-      <section v-if="implementationMode === 'compare' && displayResult" class="results-section">
-        <h2>Structure Visualization <span class="impl-badge">TypeScript Result</span></h2>
-
-        <!-- View mode toggle -->
-        <div class="view-toggle">
-          <button
-            v-for="mode in viewModes"
-            :key="mode.id"
-            :class="{ active: viewMode === mode.id }"
-            @click="viewMode = mode.id"
-            :title="mode.label"
-          >
-            <span class="mode-icon">{{ mode.icon }}</span>
-            <span class="mode-label">{{ mode.label }}</span>
-          </button>
-        </div>
-
-        <!-- Structure visualization -->
-        <div class="structure-view">
-          <DotBracketViewer
-            v-if="viewMode === 'dot-bracket'"
-            :sequence="displayResult.sequence"
-            :structure="displayResult.structure"
-          />
-          <ArcDiagramViewer
-            v-else-if="viewMode === 'arc'"
-            :sequence="displayResult.sequence"
-            :structure="displayResult.structure"
-            :base-pairs="displayResult.basePairs"
-          />
-          <ForceGraphViewer
-            v-else-if="viewMode === 'force'"
-            :sequence="displayResult.sequence"
-            :structure="displayResult.structure"
-            :base-pairs="displayResult.basePairs"
-          />
-          <RNAStructureViewer
-            v-else
-            :sequence="displayResult.sequence"
-            :structure="displayResult.structure"
-            :base-pairs="displayResult.basePairs"
-          />
-        </div>
-
-        <!-- Export actions -->
-        <div class="export-actions">
-          <button class="btn secondary" @click="copyResult">
-            Copy to Clipboard
-          </button>
-          <button class="btn secondary" @click="downloadResult">
-            Download Result
-          </button>
-        </div>
-      </section>
+      <!-- Placeholder for other tools -->
+      <div v-else class="tool-placeholder">
+        <h2>{{ activeTool }}</h2>
+        <p>This tool is coming soon.</p>
+      </div>
     </main>
-
-    <!-- Footer -->
-    <footer class="app-footer">
-      <p>
-        Based on <a href="https://github.com/ViennaRNA/ViennaRNA" target="_blank">ViennaRNA Package</a>.
-        Implements Zuker's algorithm for MFE structure prediction.
-      </p>
-      <p class="tech-stack">
-        Built with Vue 3 + TypeScript + WebAssembly
-      </p>
-    </footer>
   </div>
 </template>
 
 <style scoped>
-.rnafold-app {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 20px;
+.app-layout {
+  display: flex;
   min-height: 100vh;
+  background: #0d0d1a;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 220px;
+  background: #1a1a2e;
+  border-right: 1px solid #333;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
 }
 
-/* Header */
-.app-header {
-  text-align: center;
-  margin-bottom: 30px;
+.sidebar-header {
+  padding: 20px;
+  border-bottom: 1px solid #333;
 }
 
-.app-header h1 {
-  font-size: 2.5rem;
+.sidebar-header h2 {
   margin: 0;
+  font-size: 1.3rem;
   background: linear-gradient(135deg, #7B68EE, #4ECDC4);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.subtitle {
-  font-size: 1.2rem;
-  color: #888;
-  margin: 5px 0;
-}
-
-.description {
+.sidebar-header .version {
+  margin: 5px 0 0;
+  font-size: 0.8rem;
   color: #666;
-  font-size: 0.9rem;
-  max-width: 600px;
-  margin: 10px auto;
 }
 
-/* Main */
-.app-main {
+.tool-nav {
   flex: 1;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.tool-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 12px 15px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #aaa;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  position: relative;
+}
+
+.tool-btn:hover:not(.disabled) {
+  background: #252540;
+  color: #e0e0e0;
+}
+
+.tool-btn.active {
+  background: linear-gradient(135deg, #7B68EE20, #4ECDC420);
+  color: #7B68EE;
+  border-left: 3px solid #7B68EE;
+}
+
+.tool-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tool-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.tool-desc {
+  font-size: 0.75rem;
+  color: #666;
+  margin-top: 2px;
+}
+
+.tool-btn.active .tool-desc {
+  color: #888;
+}
+
+.coming-soon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  background: #333;
+  border-radius: 10px;
+  color: #888;
+}
+
+.sidebar-footer {
+  padding: 15px;
+  border-top: 1px solid #333;
+  text-align: center;
+}
+
+.sidebar-footer a {
+  color: #666;
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.sidebar-footer a:hover {
+  color: #7B68EE;
+}
+
+/* Main content */
+.main-content {
+  flex: 1;
+  padding: 20px 30px;
+  overflow-y: auto;
+  max-width: 900px;
+}
+
+/* Header */
+.app-header {
+  margin-bottom: 25px;
+}
+
+.app-header h1 {
+  font-size: 2rem;
+  margin: 0;
+  color: #e0e0e0;
+}
+
+.subtitle {
+  color: #888;
+  margin: 5px 0 0;
+}
+
+/* RNAfold content */
+.rnafold-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 /* Input section */
 .input-section {
   background: #1e1e2e;
-  padding: 25px;
+  padding: 20px;
   border-radius: 12px;
-  margin-bottom: 20px;
 }
 
-.input-section h2 {
-  margin-top: 0;
+.input-section h2,
+.params-section h2,
+.results-section h2 {
+  margin: 0 0 15px;
   color: #e0e0e0;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
 }
 
 .textarea-wrapper {
@@ -668,61 +707,95 @@ textarea:disabled {
   color: #7B68EE;
 }
 
-/* Implementation mode toggle */
-.impl-mode-section {
-  margin-top: 20px;
+/* Parameters section */
+.params-section {
+  background: #1e1e2e;
+  padding: 20px;
+  border-radius: 12px;
+}
+
+.params-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.param-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.param-item label {
+  color: #aaa;
+  font-size: 0.9rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.param-hint {
+  font-size: 0.75rem;
+  color: #666;
+  font-weight: normal;
+}
+
+.param-item input[type="number"],
+.param-item select {
+  padding: 8px 12px;
+  border: 1px solid #444;
+  border-radius: 6px;
+  background: #0d0d1a;
+  color: #e0e0e0;
+  font-size: 0.9rem;
+}
+
+.param-item input[type="number"]:focus,
+.param-item select:focus {
+  outline: none;
+  border-color: #7B68EE;
+}
+
+.param-item.checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+
+.param-item.checkbox label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.param-item.checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #7B68EE;
+}
+
+.command-preview {
+  margin-top: 15px;
+  padding: 10px 15px;
+  background: #0d0d1a;
+  border-radius: 6px;
   display: flex;
   align-items: center;
-  gap: 15px;
-  flex-wrap: wrap;
+  gap: 10px;
 }
 
-.impl-label {
-  color: #888;
-  font-size: 0.9rem;
+.cmd-label {
+  color: #666;
+  font-size: 0.8rem;
 }
 
-.impl-toggle {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.impl-toggle button {
-  padding: 8px 16px;
-  border: 1px solid #444;
-  border-radius: 8px;
-  background: transparent;
-  color: #888;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 0.9rem;
-}
-
-.impl-toggle button:hover:not(.active):not(.disabled) {
-  border-color: #666;
-  color: #aaa;
-}
-
-.impl-toggle button.active {
-  background: #7B68EE;
-  border-color: #7B68EE;
-  color: white;
-}
-
-.impl-toggle button.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.wasm-loading {
-  font-size: 0.75rem;
-  opacity: 0.7;
+.command-preview code {
+  color: #4ECDC4;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
 }
 
 /* Actions */
 .actions {
-  margin-top: 20px;
   display: flex;
   gap: 10px;
 }
@@ -784,166 +857,13 @@ textarea:disabled {
   color: #FF6B6B;
   padding: 15px;
   border-radius: 8px;
-  margin-bottom: 20px;
-}
-
-/* Comparison section */
-.comparison-section {
-  background: #1e1e2e;
-  padding: 25px;
-  border-radius: 12px;
-  margin-bottom: 20px;
-}
-
-.comparison-section h2 {
-  margin-top: 0;
-  color: #e0e0e0;
-  font-size: 1.2rem;
-}
-
-.comparison-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-@media (max-width: 700px) {
-  .comparison-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.comparison-card {
-  background: #0d0d1a;
-  padding: 20px;
-  border-radius: 8px;
-  border: 2px solid transparent;
-}
-
-.comparison-card h3 {
-  margin: 0 0 15px 0;
-  font-size: 1rem;
-  color: #e0e0e0;
-}
-
-.ts-card {
-  border-color: #7B68EE;
-}
-
-.ts-card h3 {
-  color: #7B68EE;
-}
-
-.wasm-card {
-  border-color: #4ECDC4;
-}
-
-.wasm-card h3 {
-  color: #4ECDC4;
-}
-
-.result-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.stat {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.stat-label {
-  color: #888;
-  font-size: 0.85rem;
-}
-
-.stat-value {
-  color: #e0e0e0;
-  font-weight: 600;
-}
-
-.stat-value.time {
-  color: #FFD93D;
-}
-
-.structure-preview {
-  margin-top: 15px;
-  padding: 10px;
-  background: #1e1e2e;
-  border-radius: 4px;
-  overflow-x: auto;
-}
-
-.structure-preview code {
-  font-family: 'Courier New', monospace;
-  font-size: 0.8rem;
-  color: #aaa;
-}
-
-.comparison-summary {
-  display: flex;
-  gap: 25px;
-  flex-wrap: wrap;
-  padding: 15px 20px;
-  background: #0d0d1a;
-  border-radius: 8px;
-}
-
-.summary-item {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.summary-label {
-  color: #888;
-  font-size: 0.9rem;
-}
-
-.summary-value {
-  color: #e0e0e0;
-  font-weight: 600;
-}
-
-.summary-item.match .summary-value {
-  color: #4ECDC4;
-}
-
-.summary-item.mismatch .summary-value {
-  color: #FF6B6B;
-}
-
-.summary-value.speedup {
-  color: #FFD93D;
 }
 
 /* Results section */
 .results-section {
   background: #1e1e2e;
-  padding: 25px;
+  padding: 20px;
   border-radius: 12px;
-  margin-bottom: 20px;
-}
-
-.results-section h2 {
-  margin-top: 0;
-  color: #e0e0e0;
-  font-size: 1.2rem;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.impl-badge {
-  font-size: 0.7rem;
-  padding: 3px 8px;
-  border-radius: 12px;
-  background: #7B68EE;
-  color: white;
-  font-weight: normal;
 }
 
 /* MFE display */
@@ -1018,12 +938,6 @@ textarea:disabled {
   font-size: 0.85rem;
 }
 
-@media (max-width: 600px) {
-  .view-toggle .mode-label {
-    display: none;
-  }
-}
-
 /* Structure view */
 .structure-view {
   margin-bottom: 20px;
@@ -1072,26 +986,45 @@ textarea:disabled {
   color: #7B68EE;
 }
 
-/* Footer */
-.app-footer {
+/* Tool placeholder */
+.tool-placeholder {
   text-align: center;
-  padding: 20px;
+  padding: 50px;
   color: #666;
-  font-size: 0.85rem;
-  margin-top: auto;
 }
 
-.app-footer a {
-  color: #7B68EE;
-  text-decoration: none;
+.tool-placeholder h2 {
+  color: #888;
 }
 
-.app-footer a:hover {
-  text-decoration: underline;
-}
+/* Responsive */
+@media (max-width: 768px) {
+  .app-layout {
+    flex-direction: column;
+  }
 
-.tech-stack {
-  margin-top: 5px;
-  font-size: 0.75rem;
+  .sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #333;
+  }
+
+  .tool-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .tool-btn {
+    flex: 1;
+    min-width: 100px;
+  }
+
+  .tool-desc {
+    display: none;
+  }
+
+  .main-content {
+    padding: 15px;
+  }
 }
 </style>
