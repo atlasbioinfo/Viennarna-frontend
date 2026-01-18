@@ -557,14 +557,23 @@ function backtrack(fc: FoldCompound): Array<[number, number]> {
   const stack: Array<[number, number, number]> = [];
 
   // Start from f5[n]
-  // ViennaRNA backtracking: always try pairs first, then mark as unpaired
+  // ViennaRNA backtracking: first nibble off unpaired 3' bases, then look for pairs
   let j = n;
   while (j > 0) {
     const f5j = f5[j] ?? 0;
+    const f5j1 = f5[j - 1] ?? 0;
 
-    // Try to find k such that (k,j) is paired (check pairs first, like ViennaRNA)
+    // First check if j is unpaired (f5[j] == f5[j-1])
+    // ViennaRNA nibbles off unpaired bases first
+    if (f5j === f5j1) {
+      j--;
+      continue;
+    }
+
+    // j is paired - find the pairing partner
+    // ViennaRNA checks from k = j-1 down to k = 1 (prefer larger k)
     let found = false;
-    for (let k = 1; k <= j - MIN_HAIRPIN_SIZE - 1 && !found; k++) {
+    for (let k = j - MIN_HAIRPIN_SIZE - 1; k >= 1 && !found; k--) {
       const pairType = fc.pairType(k, j);
       if (isClosingPairAllowed(pairType, fc)) {
         const ckj = safeGet2D(c, k, j, INF);
@@ -585,7 +594,7 @@ function backtrack(fc: FoldCompound): Array<[number, number]> {
       }
     }
     if (!found) {
-      // j is unpaired
+      // Should not happen if DP is correct, but handle gracefully
       j--;
     }
   }
@@ -798,3 +807,19 @@ export function fold(sequence: string, options: FoldOptions = {}): FoldResult {
 
 // Re-export types
 export { isValidSequence, cleanSequence } from './sequence';
+
+/**
+ * Debug function to expose internal matrices
+ */
+export function foldDebug(sequence: string, options: FoldOptions = {}) {
+  const cleanedSequence = cleanSequence(sequence);
+  const fc = createFoldCompound(cleanedSequence, options);
+  fillMatrices(fc);
+  return {
+    f5: fc.matrices.f5,
+    c: fc.matrices.c,
+    fML: fc.matrices.fML,
+    encodedSeq: fc.encodedSeq,
+    length: fc.length
+  };
+}
