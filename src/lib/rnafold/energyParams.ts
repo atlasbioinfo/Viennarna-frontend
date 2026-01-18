@@ -1,13 +1,13 @@
 /**
  * Turner Energy Parameters for RNA Secondary Structure Prediction
- * Based on ViennaRNA package (Mathews et al. 1999, Turner et al. 2010)
+ * Based on ViennaRNA package (Turner 2004 parameters)
  *
  * All energies are in units of 0.01 kcal/mol (centidecimal)
  */
 
 import { INF, MAXLOOP } from './constants';
 
-// Stack energies at 37°C (in 0.01 kcal/mol)
+// Stack energies at 37C (in 0.01 kcal/mol)
 // Index: [closing pair type][enclosed pair type]
 export const stack37: number[][] = [
   [INF, INF, INF, INF, INF, INF, INF, INF],
@@ -44,10 +44,15 @@ export const internalLoop37: number[] = [
 // Terminal AU penalty
 export const TerminalAU = 50;
 
-// Multi-loop parameters
-export const ML_intern = -90;   // Per internal branch
-export const ML_closing = 930;  // Closing penalty
-export const ML_BASE = 0;       // Per unpaired base (typically 0)
+// Multi-loop parameters (renamed with 37 suffix for consistency)
+export const ML_intern37 = -90;   // Per internal branch
+export const ML_closing37 = 930;  // Closing penalty
+export const ML_BASE37 = 0;       // Per unpaired base
+
+// Legacy names for compatibility
+export const ML_intern = ML_intern37;
+export const ML_closing = ML_closing37;
+export const ML_BASE = ML_BASE37;
 
 // Ninio maximum correction
 export const MAX_NINIO = 300;
@@ -60,7 +65,7 @@ export const lxc37 = 107.856;
 // [pair type][5' mismatch][3' mismatch]
 export const mismatchH37: number[][][] = [
   // NONE
-  [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+  [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
   // CG
   [[-80, -100, -110, -100, -80], [-140, -150, -150, -140, -150], [-80, -100, -110, -100, -80], [-150, -230, -150, -240, -150], [-100, -100, -140, -100, -210]],
   // GC
@@ -77,10 +82,50 @@ export const mismatchH37: number[][][] = [
   [[20, 20, -10, -10, 0], [20, 20, -30, -30, -30], [0, -10, -10, -10, 0], [-30, -90, -30, -110, -30], [-10, -10, -10, -10, -90]],
 ];
 
-// Mismatch energies for internal loops
+// Mismatch energies for internal loops (generic)
 export const mismatchI37: number[][][] = [
   // NONE
-  [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+  [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
+  // CG
+  [[0, 0, 0, 0, 0], [0, 0, 0, -80, 0], [0, 0, 0, 0, 0], [0, -100, 0, -100, 0], [0, 0, 0, 0, -60]],
+  // GC
+  [[0, 0, 0, 0, 0], [0, 0, 0, -80, 0], [0, 0, 0, 0, 0], [0, -100, 0, -100, 0], [0, 0, 0, 0, -60]],
+  // GU
+  [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
+  // UG
+  [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
+  // AU
+  [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
+  // UA
+  [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
+  // NN
+  [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
+];
+
+// Mismatch energies for 1xn internal loops
+export const mismatch1nI37: number[][][] = [
+  // NONE
+  [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
+  // CG
+  [[0, 0, 0, 0, 0], [0, 0, 0, -80, 0], [0, 0, 0, 0, 0], [0, -100, 0, -100, 0], [0, 0, 0, 0, -60]],
+  // GC
+  [[0, 0, 0, 0, 0], [0, 0, 0, -80, 0], [0, 0, 0, 0, 0], [0, -100, 0, -100, 0], [0, 0, 0, 0, -60]],
+  // GU
+  [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
+  // UG
+  [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
+  // AU
+  [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
+  // UA
+  [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
+  // NN
+  [[70, 70, 70, 70, 70], [70, 70, 70, -10, 70], [70, 70, 70, 70, 70], [70, -30, 70, -30, 70], [70, 70, 70, 70, 10]],
+];
+
+// Mismatch energies for 2x3 internal loops
+export const mismatch23I37: number[][][] = [
+  // NONE
+  [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
   // CG
   [[0, 0, 0, 0, 0], [0, 0, 0, -80, 0], [0, 0, 0, 0, 0], [0, -100, 0, -100, 0], [0, 0, 0, 0, -60]],
   // GC
@@ -100,7 +145,27 @@ export const mismatchI37: number[][][] = [
 // Mismatch energies for multi-loops
 export const mismatchM37: number[][][] = [
   // NONE
-  [[INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF], [INF, INF, INF, INF, INF]],
+  [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
+  // CG
+  [[-50, -110, -50, -140, -70], [-110, -110, -110, -160, -110], [-70, -150, -70, -150, -100], [-110, -130, -110, -140, -110], [-50, -150, -50, -150, -70]],
+  // GC
+  [[-80, -140, -80, -140, -100], [-100, -150, -100, -140, -100], [-110, -150, -110, -150, -140], [-100, -140, -100, -160, -100], [-80, -150, -80, -150, -120]],
+  // GU
+  [[-50, -80, -50, -50, -50], [-50, -100, -70, -50, -70], [-60, -80, -60, -80, -60], [-70, -110, -70, -80, -70], [-50, -80, -50, -80, -50]],
+  // UG
+  [[-30, -30, -60, -60, -60], [-30, -30, -60, -60, -60], [-70, -100, -70, -100, -80], [-60, -80, -60, -80, -60], [-60, -100, -70, -100, -60]],
+  // AU
+  [[-50, -80, -50, -80, -50], [-70, -100, -70, -110, -70], [-60, -80, -60, -80, -60], [-70, -110, -70, -120, -70], [-50, -80, -50, -80, -50]],
+  // UA
+  [[-60, -80, -60, -80, -60], [-60, -80, -60, -80, -60], [-70, -100, -70, -100, -80], [-60, -80, -60, -80, -60], [-70, -100, -70, -100, -80]],
+  // NN
+  [[-30, -30, -50, -50, -50], [-30, -30, -60, -50, -60], [-60, -80, -60, -80, -60], [-60, -80, -60, -80, -60], [-50, -80, -50, -80, -50]],
+];
+
+// Mismatch energies for external loops
+export const mismatchExt37: number[][][] = [
+  // NONE
+  [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
   // CG
   [[-50, -110, -50, -140, -70], [-110, -110, -110, -160, -110], [-70, -150, -70, -150, -100], [-110, -130, -110, -140, -110], [-50, -150, -50, -150, -70]],
   // GC
@@ -120,7 +185,7 @@ export const mismatchM37: number[][][] = [
 // Dangling end energies (5' and 3')
 // dangle5[pair][base] - 5' dangling base
 export const dangle5_37: number[][] = [
-  [INF, INF, INF, INF, INF],
+  [0, 0, 0, 0, 0],
   [-50, -30, -20, -10, -20],  // CG
   [-20, -30, -0, -0, -0],     // GC
   [-30, -30, -40, -20, -20],  // GU
@@ -132,7 +197,7 @@ export const dangle5_37: number[][] = [
 
 // dangle3[pair][base] - 3' dangling base
 export const dangle3_37: number[][] = [
-  [INF, INF, INF, INF, INF],
+  [0, 0, 0, 0, 0],
   [-110, -40, -130, -60, -60],  // CG
   [-170, -80, -170, -120, -120], // GC
   [-70, -10, -70, -10, -10],    // GU
@@ -141,6 +206,16 @@ export const dangle3_37: number[][] = [
   [-100, -50, -80, -60, -60],   // UA
   [-70, -10, -70, -10, -10],    // NN
 ];
+
+// 1x1 internal loop energies (simplified - using fallback in fold.ts)
+// [outer pair][inner pair (reversed)][5' mismatch][3' mismatch]
+export const int11_37: number[][][][] = [];
+
+// 2x1 internal loop energies (simplified - using fallback in fold.ts)
+export const int21_37: number[][][][] = [];
+
+// 2x2 internal loop energies (simplified - using fallback in fold.ts)
+export const int22_37: number[][][][][][] = [];
 
 // Special hairpin loops (tetraloops)
 export interface SpecialLoop {
